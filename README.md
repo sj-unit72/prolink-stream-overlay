@@ -9,8 +9,6 @@ Works with any Pioneer/AlphaTheta gear that supports the Pro DJ Link protocol: C
 - 🎵 **Now Playing overlay** — track title, artist, artwork, BPM, key, genre
 - 🌊 **Dual-deck waveform display** — HD color waveforms with moving playhead
 - 🎨 **Customizable** — themes, colors, fonts, positioning via settings page
-- 📝 **Set recording** — auto-records your tracklist with timestamps
-- 📤 **Export** — text, CSV, JSON, 1001tracklists, DJ Studio (.DJS)
 - 🔌 **OBS-ready** — add as a Browser Source and go
 
 ## Quick Start
@@ -67,22 +65,12 @@ node server.js [--port 4455] [--dev]
 - The server connects as a virtual CDJ (ID 5) on the Pro DJ Link network
 - Uses UDP ports 50000-50002 — make sure your firewall allows them
 
-## Set Recording & Export
-
-1. Open the Settings page (`/settings`)
-2. Click **Start Recording** — tracks are logged as they play
-3. Click **Stop Recording** — export in multiple formats:
-   - **Text** — clean tracklist with timestamps
-   - **CSV** — spreadsheet-friendly
-   - **JSON** — full metadata
-   - **1001tracklists** — ready to submit
-   - **DJ Studio (.DJS)** — import into DJ Studio
-
 ## Compatibility
 
 Tested with:
 - Pioneer XDJ-XZ
-- Should work with any Pro DJ Link device (CDJ-2000NXS2, CDJ-3000, XDJ-RX3, DJM-900NXS2, etc.)
+
+Should work with any Pro DJ Link device (CDJ-2000NXS2, CDJ-3000, XDJ-RX3, DJM-900NXS2, etc.)
 
 Uses [prolink-connect](https://github.com/EvanPurkhiser/prolink-connect) under the hood.
 
