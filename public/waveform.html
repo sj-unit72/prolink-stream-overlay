@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Waveform Overlay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; overflow: hidden; font-family: 'Inter', sans-serif; }
+  
+  #container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  
+  #container.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  
+  .deck-waveform {
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    padding: 8px 12px;
+    backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .deck-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 16px;
+  }
+  
+  .deck-info {
+    min-width: 180px;
+    max-width: 180px;
+  }
+  
+  .deck-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .deck-artist {
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .waveform-canvas {
+    flex: 1;
+    height: 40px;
+    border-radius: 4px;
+    cursor: default;
+  }
+  
+  .deck-meta {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    text-align: right;
+    min-width: 60px;
+  }
+  
+  .deck-meta .bpm { color: var(--accent, #1db954); font-weight: 600; }
+  .deck-meta .key { color: rgba(255,255,255,0.7); }
+  
+  /* On-air indicator */
+  .deck-waveform.on-air { border-left: 3px solid var(--accent, #1db954); }
+  .deck-waveform.on-air .deck-label { color: var(--accent, #1db954); }
+</style>
+</head>
+<body>
+<div id="container">
+  <div class="deck-waveform" id="deck1">
+    <div class="deck-label">A</div>
+    <div class="deck-info">
+      <div class="deck-title" id="deck1-title">—</div>
+      <div class="deck-artist" id="deck1-artist"></div>
+    </div>
+    <canvas class="waveform-canvas" id="deck1-waveform" height="40"></canvas>
+    <div class="deck-meta">
+      <div class="bpm" id="deck1-bpm"></div>
+      <div class="key" id="deck1-key"></div>
+    </div>
+  </div>
+  <div class="deck-waveform" id="deck2">
+    <div class="deck-label">B</div>
+    <div class="deck-info">
+      <div class="deck-title" id="deck2-title">—</div>
+      <div class="deck-artist" id="deck2-artist"></div>
+    </div>
+    <canvas class="waveform-canvas" id="deck2-waveform" height="40"></canvas>
+    <div class="deck-meta">
+      <div class="bpm" id="deck2-bpm"></div>
+      <div class="key" id="deck2-key"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const container = document.getElementById('container');
+const canvases = { 1: document.getElementById('deck1-waveform'), 2: document.getElementById('deck2-waveform') };
+const ctxs = { 1: canvases[1].getContext('2d'), 2: canvases[2].getContext('2d') };
+const waveformData = {};
+const deckDuration = {};  // deckId → duration in seconds
+const deckBpm = {};       // deckId → BPM
+const beatPositions = { 1: 0, 2: 0 };
+let ws = null;
+let accentColor = '#1db954';
+
+function resizeCanvases() {
+  for (const id of [1, 2]) {
+    const canvas = canvases[id];
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2; // 2x for retina
+    canvas.height = rect.height * 2;
+    drawWaveform(id);
+  }
+}
+
+function decodeWaveformPreview(base64) {
+  if (!base64) return null;
+  const bytes = atob(base64);
+  const data = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) data[i] = bytes.charCodeAt(i);
+  return data;
+}
+
+function drawWaveform(deckId) {
+  const canvas = canvases[deckId];
+  const ctx = ctxs[deckId];
+  if (!canvas || !ctx) return;
+  
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  
+  const data = waveformData[deckId];
+  if (!data || data.length === 0) {
+    // Draw empty state
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  
+  const barWidth = w / data.length;
+  const midY = h / 2;
+  const beatPos = beatPositions[deckId] || 0;
+  const playheadX = (beatPos / data.length) * w;
+  
+  // Find max height for normalization
+  let maxH = 0;
+  for (const d of data) { if (d.h > maxH) maxH = d.h; }
+  if (maxH === 0) maxH = 1;
+  
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    const amplitude = (d.h / maxH) * midY * 0.9;
+    const x = i * barWidth;
+    
+    if (x < playheadX) {
+      // Played: use the track's color data
+      const r = Math.round(d.r * 255);
+      const g = Math.round(d.g * 255);
+      const b = Math.round(d.b * 255);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.globalAlpha = 0.95;
+    } else {
+      // Unplayed: dimmed version of color
+      const r = Math.round(d.r * 180);
+      const g = Math.round(d.g * 180);
+      const b = Math.round(d.b * 180);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.globalAlpha = 0.35;
+    }
+    
+    // Draw mirrored bars
+    ctx.fillRect(x, midY - amplitude, Math.max(barWidth - 0.5, 1), amplitude * 2);
+  }
+  
+  // Playhead line
+  if (beatPos > 0) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(playheadX - 1, 0, 2, h);
+    
+    // Glow
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8;
+    ctx.fillRect(playheadX - 1, 0, 2, h);
+    ctx.shadowBlur = 0;
+  }
+  
+  ctx.globalAlpha = 1;
+}
+
+function updateDeckUI(deckId, deck) {
+  const prefix = `deck${deckId}`;
+  document.getElementById(`${prefix}-title`).textContent = deck.title || '—';
+  document.getElementById(`${prefix}-artist`).textContent = deck.artist || '';
+  document.getElementById(`${prefix}-bpm`).textContent = deck.bpm ? `${deck.bpm}` : '';
+  document.getElementById(`${prefix}-key`).textContent = deck.key || '';
+  
+  if (deck.duration) deckDuration[deckId] = deck.duration;
+  if (deck.bpm) deckBpm[deckId] = parseFloat(deck.bpm);
+  
+  const el = document.getElementById(prefix);
+  el.classList.toggle('on-air', deck.isOnAir || false);
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+  
+  ws.onopen = () => {
+    // Request waveform data for both decks
+    ws.send(JSON.stringify({ type: 'get_waveform', deckId: 1 }));
+    ws.send(JSON.stringify({ type: 'get_waveform', deckId: 2 }));
+  };
+  
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      
+      if (msg.type === 'now_playing') {
+        if (msg.settings?.accentColor) {
+          accentColor = msg.settings.accentColor;
+          document.documentElement.style.setProperty('--accent', accentColor);
+        }
+        
+        // Update deck info
+        if (msg.decks) {
+          let hasData = false;
+          msg.decks.forEach(d => {
+            if (d.title) hasData = true;
+            updateDeckUI(d.id, d);
+          });
+          container.classList.toggle('visible', hasData);
+        }
+        
+        // Request waveforms if needed
+        if (msg.deck?.hasWaveform && !waveformData[msg.deck.id]) {
+          ws.send(JSON.stringify({ type: 'get_waveform', deckId: msg.deck.id }));
+        }
+      }
+      
+      if (msg.type === 'waveform_data' && msg.waveform) {
+        if (msg.waveform.hd && Array.isArray(msg.waveform.hd)) {
+          // HD waveform: array of { h, r, g, b } objects
+          waveformData[msg.deckId] = msg.waveform.hd;
+          drawWaveform(msg.deckId);
+        } else {
+          const src = msg.waveform.preview || msg.waveform.detailed;
+          const decoded = decodeWaveformPreview(src);
+          if (decoded) {
+            // Convert to same format as HD for uniform rendering
+            waveformData[msg.deckId] = Array.from(decoded).map(h => ({ h, r: 0.1, g: 0.7, b: 0.3 }));
+            drawWaveform(msg.deckId);
+          }
+        }
+      }
+      
+      if (msg.type === 'beat') {
+        const data = waveformData[msg.deckId];
+        if (data) {
+          const bpm = msg.bpm ? parseFloat(msg.bpm) : deckBpm[msg.deckId] || 120;
+          const dur = deckDuration[msg.deckId] || 300;
+          const totalBeats = (bpm / 60) * dur;
+          // Map beat position to waveform data index
+          beatPositions[msg.deckId] = Math.min((msg.beat / totalBeats) * data.length, data.length);
+          drawWaveform(msg.deckId);
+        }
+      }
+    } catch {}
+  };
+  
+  ws.onclose = () => setTimeout(connect, 3000);
+  ws.onerror = () => ws.close();
+}
+
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+connect();
+</script>
+</body>
+</html>

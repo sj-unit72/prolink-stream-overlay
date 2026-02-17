@@ -1,0 +1,14 @@
+{
+  "name": "prolink-obs-overlay",
+  "version": "1.0.0",
+  "description": "OBS Now Playing overlay for Pioneer CDJs via Prolink",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --dev"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}
