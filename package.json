@@ -1,14 +1,35 @@
 {
-  "name": "prolink-obs-overlay",
+  "name": "prolink-stream-overlay",
   "version": "1.0.0",
-  "description": "OBS Now Playing overlay for Pioneer CDJs via Prolink",
+  "description": "Real-time Now Playing overlay and waveform visualization for Pioneer DJ gear",
   "main": "server.js",
+  "bin": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js --dev"
+    "dev": "node server.js --dev",
+    "build:mac": "pkg . --target node18-macos-arm64,node18-macos-x64 --output dist/prolink-stream-overlay-mac",
+    "build:win": "pkg . --target node18-win-x64 --output dist/prolink-stream-overlay-win.exe",
+    "build:linux": "pkg . --target node18-linux-x64 --output dist/prolink-stream-overlay-linux",
+    "build:all": "npm run build:mac && npm run build:win && npm run build:linux"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "outputPath": "dist"
   },
   "dependencies": {
     "express": "^4.21.0",
+    "prolink-connect": "^0.11.0",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "keywords": ["pioneer", "cdj", "prolink", "dj", "obs", "overlay", "streaming", "waveform"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sj-unit72/prolink-stream-overlay"
   }
 }
